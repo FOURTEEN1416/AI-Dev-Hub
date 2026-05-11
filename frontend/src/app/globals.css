@@ -1,0 +1,382 @@
+/* 全局样式 */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========== CSS 变量 - 暗色主题 ========== */
+:root {
+  /* 暗色主题（默认） */
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-card: rgba(30, 41, 59, 0.8);
+  --bg-card-hover: rgba(51, 65, 85, 0.9);
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border-color: rgba(51, 65, 85, 0.5);
+  --border-hover: rgba(59, 130, 246, 0.5);
+  --accent-glow: rgba(59, 130, 246, 0.15);
+  --accent-glow-strong: rgba(59, 130, 246, 0.3);
+  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --shadow-card-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+}
+
+/* 亮色主题 */
+.light {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-card: rgba(255, 255, 255, 0.9);
+  --bg-card-hover: rgba(241, 245, 249, 0.95);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --border-color: rgba(203, 213, 225, 0.5);
+  --border-hover: rgba(59, 130, 246, 0.5);
+  --accent-glow: rgba(59, 130, 246, 0.08);
+  --accent-glow-strong: rgba(59, 130, 246, 0.15);
+  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-card-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.07);
+}
+
+/* ========== 基础样式 ========== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  min-height: 100vh;
+}
+
+/* ========== 自定义滚动条 ========== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* Firefox 滚动条 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-muted) var(--bg-secondary);
+}
+
+/* ========== 卡片悬停效果 ========== */
+@layer components {
+  .card-base {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: var(--shadow-card);
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+  }
+
+  .card-hover {
+    @apply card-base;
+  }
+
+  .card-hover:hover {
+    background-color: var(--bg-card-hover);
+    border-color: var(--border-hover);
+    box-shadow: var(--shadow-card-hover), 0 0 20px var(--accent-glow);
+    transform: translateY(-2px);
+  }
+
+  /* 发光卡片效果 */
+  .card-glow {
+    @apply card-base;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card-glow::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--accent-glow),
+      transparent
+    );
+    transition: left 0.5s ease;
+  }
+
+  .card-glow:hover::before {
+    left: 100%;
+  }
+
+  .card-glow:hover {
+    border-color: var(--border-hover);
+    box-shadow: var(--shadow-card-hover), 0 0 30px var(--accent-glow-strong);
+    transform: translateY(-4px);
+  }
+
+  /* 渐变文字 */
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  }
+
+  /* 玻璃效果 */
+  .glass {
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(51, 65, 85, 0.3);
+  }
+
+  .light .glass {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(203, 213, 225, 0.3);
+  }
+
+  /* 按钮基础样式 */
+  .btn-primary {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #60a5fa, #3b82f6);
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--border-hover);
+    background-color: var(--bg-card-hover);
+  }
+
+  /* 输入框样式 */
+  .input-base {
+    @apply w-full px-4 py-2.5 rounded-lg outline-none transition-all duration-200;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+  }
+
+  .input-base::placeholder {
+    color: var(--text-muted);
+  }
+
+  .input-base:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  }
+}
+
+/* ========== 页面过渡动画 ========== */
+@layer utilities {
+  .animate-in {
+    animation: fadeIn 0.5s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/* ========== 选中文本样式 ========== */
+::selection {
+  background-color: rgba(59, 130, 246, 0.3);
+  color: var(--text-primary);
+}
+
+/* ========== 链接样式 ========== */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ========== 图表相关样式 ========== */
+@layer components {
+  /* 图表容器 */
+  .chart-container {
+    position: relative;
+    width: 100%;
+    min-height: 200px;
+  }
+
+  /* 图表卡片基础样式 */
+  .chart-card {
+    @apply card-base p-4;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* 图表卡片悬停效果 */
+  .chart-card:hover {
+    border-color: var(--border-hover);
+    box-shadow: var(--shadow-card-hover), 0 0 20px var(--accent-glow);
+  }
+
+  /* 玻璃卡片效果 - 用于 Tooltip */
+  .glass-card {
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(51, 65, 85, 0.5);
+  }
+
+  .light .glass-card {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(203, 213, 225, 0.5);
+  }
+
+  /* 标签云项样式 */
+  .tag-cloud-item {
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+  }
+
+  .tag-cloud-item:hover {
+    border-color: currentColor;
+    transform: scale(1.1);
+  }
+
+  /* 统计卡片动画 */
+  .stats-card {
+    animation: slideUp 0.5s ease-out;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/* ========== Recharts 图表主题适配 ========== */
+/* 深色主题下的图表样式 */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: rgba(100, 116, 139, 0.2);
+}
+
+.recharts-text {
+  fill: var(--text-secondary);
+}
+
+/* 图表动画 */
+.recharts-surface {
+  overflow: visible;
+}
+
+/* 饼图扇区悬停效果 */
+.recharts-pie-sector {
+  transition: transform 0.2s ease;
+}
+
+.recharts-pie-sector:hover {
+  transform: scale(1.05);
+  transform-origin: center;
+}
+
+/* 柱状图柱子悬停效果 */
+.recharts-bar-rectangle {
+  transition: opacity 0.2s ease;
+}
+
+.recharts-bar-rectangle:hover {
+  opacity: 0.8;
+}
+
+/* 折线图线条动画 */
+.recharts-line-curve {
+  animation: drawLine 1s ease-out;
+}
+
+@keyframes drawLine {
+  from {
+    stroke-dashoffset: 1000;
+    stroke-dasharray: 1000;
+  }
+  to {
+    stroke-dashoffset: 0;
+    stroke-dasharray: 1000;
+  }
+}
+
+/* 图例样式 */
+.recharts-legend-wrapper {
+  font-size: 12px;
+}
+
+.recharts-legend-item-text {
+  color: var(--text-secondary) !important;
+}
+
+/* Tooltip 样式 */
+.recharts-tooltip-wrapper {
+  outline: none;
+}
+
+/* 响应式图表容器 */
+@media (max-width: 640px) {
+  .chart-container {
+    min-height: 250px;
+  }
+
+  .recharts-text {
+    font-size: 10px;
+  }
+}
+
+/* ========== 深色主题图表颜色变量 ========== */
+:root {
+  --chart-color-1: #3b82f6;
+  --chart-color-2: #8b5cf6;
+  --chart-color-3: #06b6d4;
+  --chart-color-4: #10b981;
+  --chart-color-5: #f59e0b;
+  --chart-color-6: #ef4444;
+  --chart-color-7: #ec4899;
+  --chart-color-8: #6366f1;
+}

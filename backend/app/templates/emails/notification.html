@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI开发者机会通知</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background-color: #f3f4f6;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #3B82F6, #8B5CF6);
+            color: white;
+            padding: 30px 20px;
+            border-radius: 8px 8px 0 0;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 24px;
+        }
+        .header p {
+            margin: 0;
+            opacity: 0.9;
+        }
+        .content {
+            background: #ffffff;
+            padding: 30px 20px;
+        }
+        .greeting {
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        .intro {
+            color: #6b7280;
+            margin-bottom: 25px;
+        }
+        .opportunity-card {
+            background: #f9fafb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #3B82F6;
+        }
+        .opportunity-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 10px;
+        }
+        .opportunity-meta {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 10px;
+        }
+        .tag {
+            display: inline-block;
+            background: #e5e7eb;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-right: 5px;
+            color: #4b5563;
+        }
+        .tag.type {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+        .tag.source {
+            background: #f3e8ff;
+            color: #7c3aed;
+        }
+        .opportunity-description {
+            font-size: 14px;
+            color: #4b5563;
+            margin-bottom: 15px;
+        }
+        .btn {
+            display: inline-block;
+            background: #3B82F6;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .btn:hover {
+            background: #2563eb;
+        }
+        .footer-links {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+        }
+        .footer-links a {
+            color: #6b7280;
+            text-decoration: none;
+            font-size: 14px;
+            margin: 0 10px;
+        }
+        .footer-links a:hover {
+            color: #3B82F6;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #9ca3af;
+            font-size: 12px;
+            background: #f9fafb;
+            border-radius: 0 0 8px 8px;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6b7280;
+        }
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>AI开发者机会聚合平台</h1>
+            <p>为您发现新的AI开发者机会</p>
+        </div>
+        <div class="content">
+            <p class="greeting">您好，{{ username }}！</p>
+            
+            {% if opportunities %}
+            <p class="intro">以下是为您精选的最新AI开发者机会：</p>
+            
+            {% for opp in opportunities %}
+            <div class="opportunity-card">
+                <div class="opportunity-title">{{ opp.title }}</div>
+                <div class="opportunity-meta">
+                    {% if opp.type %}
+                    <span class="tag type">{{ opp.type }}</span>
+                    {% endif %}
+                    {% if opp.source %}
+                    <span class="tag source">{{ opp.source }}</span>
+                    {% endif %}
+                    {% if opp.deadline %}
+                    <span>截止日期：{{ opp.deadline }}</span>
+                    {% endif %}
+                </div>
+                {% if opp.description %}
+                <p class="opportunity-description">{{ opp.description[:150] }}{% if opp.description|length > 150 %}...{% endif %}</p>
+                {% endif %}
+                {% if opp.url %}
+                <a href="{{ opp.url }}" class="btn">查看详情</a>
+                {% endif %}
+            </div>
+            {% endfor %}
+            
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">📭</div>
+                <p>暂无新的机会推荐</p>
+                <p style="font-size: 14px;">我们会持续为您关注，有新机会时会第一时间通知您</p>
+            </div>
+            {% endif %}
+            
+            <div class="footer-links">
+                <a href="{{ unsubscribe_url }}">取消订阅</a>
+                <a href="{{ settings_url }}">修改偏好</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p>© 2025 AI开发者机会聚合平台. All rights reserved.</p>
+            <p>本邮件由系统自动发送，请勿直接回复</p>
+        </div>
+    </div>
+</body>
+</html>
