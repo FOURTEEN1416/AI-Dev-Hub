@@ -77,14 +77,10 @@ jobs:
           cd frontend
           npm ci
       
-      - name: Install eslint-config-next
-        run: |
-          cd frontend
-          npm install eslint-config-next@latest
-      
       - name: Lint
         run: |
           cd frontend
+          npm install eslint-config-next@latest
           npm run lint
       
       - name: Build
