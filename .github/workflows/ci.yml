@@ -80,7 +80,7 @@ jobs:
       - name: Lint
         run: |
           cd frontend
-          npm install eslint-config-next@latest
+          npm install eslint-config-next@14
           npm run lint
       
       - name: Build
