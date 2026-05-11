@@ -39,6 +39,9 @@ Thumbs.db
 *.log
 logs/
 
+# TypeScript
+*.tsbuildinfo
+
 # Database
 *.db
 *.sqlite3

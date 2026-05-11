@@ -72,7 +72,7 @@ function CustomTooltip({
 /**
  * 自定义图例渲染
  */
-function renderLegendText(value: string, entry: { color: string }) {
+function renderLegendText(value: string, entry: { color?: string }) {
   return (
     <span style={{ color: entry.color }} className="text-sm">
       {value}
