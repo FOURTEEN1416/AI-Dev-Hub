@@ -70,6 +70,21 @@ class SpiderConfig(BaseSettings):
     # 日志级别
     LOG_LEVEL: str = "INFO"
 
+    # ==================== 引擎配置 ====================
+    # 是否启用 Scrapling 引擎（替换 httpx + BeautifulSoup4）
+    # True=使用 Scrapling StealthyFetcher + Selector
+    # False=使用原有的 httpx + BeautifulSoup4
+    ENABLE_SCRAPLING: bool = True
+
+    # Scrapling 引擎配置
+    SCRAPLING_HEADLESS: bool = True
+    SCRAPLING_SOLVE_CLOUDFLARE: bool = True
+    SCRAPLING_TIMEOUT: int = 15000  # 毫秒
+
+    # 是否启用 AI 提取管道
+    # True=在 pipeline 中使用 ScrapeGraphAI 做 AI 结构化提取
+    ENABLE_AI_EXTRACT: bool = False
+
     # ==================== Playwright 配置 ====================
     # 是否使用无头模式
     HEADLESS: bool = True

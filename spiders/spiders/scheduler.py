@@ -26,6 +26,21 @@ class SpiderScheduler:
         self._spiders: dict[str, BaseSpider] = {}
         self._running = False
         self._scheduled_task: Optional[asyncio.Task] = None
+        self._engine_label = self._detect_engine()
+
+    @staticmethod
+    def _detect_engine() -> str:
+        """检测当前启用的引擎组合，返回标识符"""
+        engine = "httpx+BS4"
+        try:
+            from spiders.base import _SCRAPLING_AVAILABLE
+            if _SCRAPLING_AVAILABLE and settings.ENABLE_SCRAPLING:
+                engine = "Scrapling(AsyncFetcher+StealthyFetcher)"
+        except Exception:
+            pass
+        ai_ext = "AI提取" if settings.ENABLE_AI_EXTRACT else "无AI提取"
+        stealth = "Stealthy" if settings.SCRAPLING_SOLVE_CLOUDFLARE else "普通模式"
+        return f"{engine} / {ai_ext} / Cloudflare:{stealth}"
 
     # ==================== 爬虫注册 ====================
 
@@ -205,6 +220,7 @@ class SpiderScheduler:
 
         logger.info("=" * 60)
         logger.info("[调度器] 运行结果汇总")
+        logger.info("  [引擎] %s", scheduler._engine_label)
         logger.info("=" * 60)
         logger.info("  爬虫总数: %d | 成功: %d | 失败: %d",
                      len(results), success_count, len(results) - success_count)
@@ -274,5 +290,6 @@ def create_scheduler() -> SpiderScheduler:
 
     logger.info("调度器初始化完成，已注册 %d 个爬虫: %s",
                 len(scheduler.list_spiders()), scheduler.list_spiders())
+    logger.info("当前引擎: %s", scheduler._engine_label)
 
     return scheduler

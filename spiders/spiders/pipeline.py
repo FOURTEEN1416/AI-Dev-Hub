@@ -1,14 +1,27 @@
 """
 数据管道模块
-负责数据清洗、去重检查、数据验证和异步入库
+负责数据清洗、去重检查、数据验证、AI提取和异步入库
 """
 
+import json
 import re
 import logging
 from typing import Optional
 
 from spiders.models import OpportunityItem
 from spiders.base import BaseSpider
+from spiders.config import settings
+
+# 可选 AI 提取适配器
+_AI_AVAILABLE = False
+try:
+    if settings.ENABLE_AI_EXTRACT:
+        from spiders.ai_adapter import AIExtractionAdapter, get_ai_adapter
+        _AI_AVAILABLE = True
+except ImportError:
+    pass
+except Exception:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +206,7 @@ class DataPipeline:
 
     async def process_item(self, raw_item: dict) -> Optional[OpportunityItem]:
         """
-        处理单条数据：清洗 -> 验证 -> 去重
+        处理单条数据：清洗 -> AI 提取 -> 验证 -> 去重
 
         Args:
             raw_item: 原始数据字典
@@ -210,6 +223,39 @@ class DataPipeline:
             raw_item["source_url"] = self.clean_url(raw_item["source_url"])
         if "tags" in raw_item:
             raw_item["tags"] = self.clean_tags(raw_item["tags"])
+
+        # AI 提取增强（可选）
+        if _AI_AVAILABLE:
+            ai_adapter = get_ai_adapter()
+            if ai_adapter is not None:
+                # 使用清洗后的 description（或 title）作为 AI 提取源
+                content = raw_item.get("description") or raw_item.get("title", "")
+                if content:
+                    ai_result = await ai_adapter.extract(
+                        raw_content=content,
+                        schema="title, description, tags, difficulty_level, tech_stack",
+                        context={"source": getattr(self.spider, "name", "unknown")},
+                    )
+                    if ai_result:
+                        # 仅用 AI 结果填充空字段，不覆盖已有的
+                        for key in ("title", "description", "tags"):
+                            if key in ai_result and ai_result[key] and not raw_item.get(key):
+                                raw_item[key] = ai_result[key]
+                        # AI 增强信息存入 metadata（JSON 字段，可扩展）
+                        ai_enrichment = {}
+                        for key in ("difficulty_level", "tech_stack"):
+                            if key in ai_result and ai_result[key]:
+                                ai_enrichment[key] = ai_result[key]
+                        if ai_enrichment:
+                            meta = raw_item.get("metadata") or {}
+                            if isinstance(meta, str):
+                                try:
+                                    meta = json.loads(meta)
+                                except (json.JSONDecodeError, TypeError):
+                                    meta = {}
+                            meta["ai_extracted"] = ai_enrichment
+                            raw_item["metadata"] = meta
+                    await ai_adapter.close()
 
         # 数据验证
         item = self.validate_item(raw_item)

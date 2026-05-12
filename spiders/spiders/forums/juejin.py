@@ -40,7 +40,7 @@ class JuejinSpider(BaseSpider):
     - 发布时间
 
     注意事项:
-    - 掘金是 SPA，需要 Playwright 或分析 API
+    - 掘金是 SPA，需要 CloakBrowser 或分析 API
     - 优先使用 API 方式（如果有公开 API）
     - 处理动态加载
     """
@@ -71,9 +71,9 @@ class JuejinSpider(BaseSpider):
                     seen_urls.add(item.source_url)
                     all_items.append(item)
         except Exception as e:
-            logger.warning("[%s] API 方式失败，尝试 Playwright: %s", self.name, str(e))
+            logger.warning("[%s] API 方式失败，尝试 CloakBrowser: %s", self.name, str(e))
 
-            # 回退到 Playwright 方式
+            # 回退到 CloakBrowser 方式
             for tag_name, url in JUEJIN_TAG_URLS:
                 try:
                     items = await self._parse_with_playwright(url, tag_name)
@@ -227,7 +227,7 @@ class JuejinSpider(BaseSpider):
 
     async def _parse_with_playwright(self, url: str, tag_name: str) -> list[OpportunityItem]:
         """
-        使用 Playwright 渲染并解析页面
+        使用 CloakBrowser 渲染并解析页面（Playwright 兼容接口）
 
         Args:
             url: 标签页面 URL
@@ -236,39 +236,43 @@ class JuejinSpider(BaseSpider):
         Returns:
             OpportunityItem 列表
         """
-        from playwright.async_api import async_playwright
+        from cloakbrowser import launch_async
 
         items = []
-
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+        browser = None
+        try:
+            browser = await launch_async(
+                headless=True,
+                stealth_args=True,
+                humanize=True,
+            )
             context = await browser.new_context(
                 user_agent=self._get_random_ua(),
             )
             page = await context.new_page()
 
-            try:
-                logger.info("[%s] Playwright 正在加载页面: %s", self.name, url)
-                await page.goto(url, wait_until="networkidle", timeout=30000)
+            logger.info("[%s] CloakBrowser 正在加载页面: %s", self.name, url)
+            await page.goto(url, wait_until="networkidle", timeout=30000)
 
-                # 等待文章列表加载
-                await page.wait_for_selector(".item, .article-item, [class*='content-item']", timeout=15000)
+            # 等待文章列表加载
+            await page.wait_for_selector(".item, .article-item, [class*='content-item']", timeout=15000)
 
-                # 滚动加载更多内容
-                for _ in range(3):
-                    await page.evaluate("window.scrollBy(0, 1000)")
-                    await page.wait_for_timeout(1000)
+            # 滚动加载更多内容
+            for _ in range(3):
+                await page.evaluate("window.scrollBy(0, 1000)")
+                await page.wait_for_timeout(1000)
 
-                # 获取页面内容
-                content = await page.content()
-                soup = self.parse_html(content)
+            # 获取页面内容
+            content = await page.content()
+            soup = self.parse_html(content)
 
-                # 解析文章列表
-                items = self._parse_article_list(soup, tag_name)
+            # 解析文章列表
+            items = self._parse_article_list(soup, tag_name)
 
-            except Exception as e:
-                logger.error("[%s] Playwright 解析失败: %s", self.name, str(e))
-            finally:
+        except Exception as e:
+            logger.error("[%s] CloakBrowser 解析失败: %s", self.name, str(e))
+        finally:
+            if browser:
                 await browser.close()
 
         return items

@@ -5,6 +5,7 @@ HTML 解析、Redis 去重、PostgreSQL 存储
 """
 
 import asyncio
+import json
 import logging
 import random
 import time
@@ -17,6 +18,24 @@ from fake_useragent import UserAgent
 
 from spiders.config import settings
 from spiders.models import OpportunityItem, SpiderResult
+
+# --- 可选引擎导入 (Scrapling) ---
+# 尝试导入 Scrapling，运行时通过 settings.ENABLE_SCRAPLING 控制是否使用
+_SCRAPLING_AVAILABLE = False
+_SCRAPLING_STEALTHY_FETCHER = None
+_SCRAPLING_ASYNC_FETCHER = None
+_SCRAPLING_SELECTOR = None
+try:
+    from scrapling.fetchers import StealthyFetcher as _SF, AsyncFetcher as _AF
+    from scrapling.parser import Selector as _SL
+    _SCRAPLING_STEALTHY_FETCHER = _SF
+    _SCRAPLING_ASYNC_FETCHER = _AF
+    _SCRAPLING_SELECTOR = _SL
+    _SCRAPLING_AVAILABLE = True
+except ImportError:
+    pass
+except Exception:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -94,17 +113,30 @@ class BaseSpider(ABC):
 
     # ==================== 重试机制 ====================
 
-    async def fetch(self, url: str, **kwargs) -> Optional[httpx.Response]:
+    async def fetch(self, url: str, use_scrapling: Optional[bool] = None, **kwargs) -> Optional[httpx.Response]:
         """
         带重试机制的 HTTP GET 请求
+        支持 Scrapling StealthyFetcher（启用时自动绕过Cloudflare）和 httpx 双引擎
 
         Args:
             url: 请求地址
-            **kwargs: 传递给 httpx 的额外参数
+            use_scrapling: 是否使用Scrapling引擎，None=使用配置的默认值
+            **kwargs: 传递给 httpx/Scrapling 的额外参数
 
         Returns:
             httpx.Response 对象，请求全部失败时返回 None
         """
+        # 判断是否使用 Scrapling 引擎
+        use_scrapling = settings.ENABLE_SCRAPLING if use_scrapling is None else use_scrapling
+
+        if use_scrapling and _SCRAPLING_AVAILABLE:
+            result = await self._fetch_scrapling(url, **kwargs)
+            if result is not None:
+                return result
+            logger.warning("[%s] Scrapling 引擎失败，回退到 httpx 引擎: %s", self.name, url)
+            # 失败时回退到 httpx 引擎
+
+        # === 原始 httpx 引擎 ===
         max_retries = settings.MAX_RETRIES
         last_error = None
 
@@ -150,18 +182,101 @@ class BaseSpider(ABC):
         logger.error("[%s] 请求最终失败: %s (错误: %s)", self.name, url, str(last_error))
         return None
 
-    async def fetch_json(self, url: str, **kwargs) -> Optional[dict | list]:
+    async def _fetch_scrapling(self, url: str, **kwargs) -> Optional[httpx.Response]:
+        """
+        使用 Scrapling 引擎获取页面 — 两级策略：
+          1. AsyncFetcher.get()      轻量HTTP（curl），无浏览器，快速失败
+          2. StealthyFetcher.async_fetch()  浏览器引擎，反反爬，适合Cloudflare站点
+
+        Args:
+            url: 请求地址
+            **kwargs: 额外参数，支持 force_browser=True 跳过策略1直接走Stealthy
+
+        Returns:
+            封装为 httpx.Response 兼容接口，失败时返回 None
+        """
+        last_error = None
+
+        # 提取/清理 kwargs
+        force_browser = kwargs.pop('force_browser', False)
+        for k in ['headless', 'solve_cloudflare', 'timeout']:
+            kwargs.pop(k, None)
+
+        # 策略1: AsyncFetcher 轻量HTTP（curl，无浏览器）
+        # 快速失败：只试1次，不重试
+        if not force_browser and _SCRAPLING_ASYNC_FETCHER is not None:
+            try:
+                fetcher = _SCRAPLING_ASYNC_FETCHER()
+                response = await asyncio.wait_for(
+                    fetcher.get(url, timeout=15000, **kwargs),
+                    timeout=20,
+                )
+                body = response.body if hasattr(response, 'body') else b''
+                if body:
+                    logger.debug("[%s] [Scrapling-Async] %s (%d bytes)", self.name, url, len(body))
+                    compat = httpx.Response(
+                        status_code=200, content=body,
+                        request=httpx.Request("GET", url),
+                    )
+                    compat._scrapling_raw = response
+                    return compat
+            except asyncio.TimeoutError:
+                logger.debug("[%s] [Scrapling-Async] 超时, 回退Stealthy: %s", self.name, url)
+            except Exception as e:
+                logger.debug("[%s] [Scrapling-Async] 失败(%s), 回退Stealthy", self.name, str(e)[:80])
+
+        # 策略2: StealthyFetcher 浏览器引擎（带Cloudflare绕过）
+        max_retries = settings.MAX_RETRIES
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.debug("[%s] [Scrapling-Stealthy] 请求: %s (第 %d 次)", self.name, url, attempt)
+
+                response = await _SCRAPLING_STEALTHY_FETCHER.async_fetch(
+                    url,
+                    headless=settings.SCRAPLING_HEADLESS,
+                    solve_cloudflare=settings.SCRAPLING_SOLVE_CLOUDFLARE,
+                    timeout=settings.SCRAPLING_TIMEOUT,
+                    **kwargs,
+                )
+
+                body = response.body if hasattr(response, 'body') else b''
+                if not body:
+                    raise ConnectionError("Scrapling 返回空响应")
+
+                logger.debug("[%s] [Scrapling-Stealthy] 成功: %s (%d bytes)", self.name, url, len(body))
+
+                compat_response = httpx.Response(
+                    status_code=200,
+                    content=body,
+                    request=httpx.Request("GET", url),
+                )
+                compat_response._scrapling_raw = response
+                return compat_response
+
+            except Exception as e:
+                last_error = e
+                logger.warning("[%s] [Scrapling-Stealthy] 异常: %s (%s, 第 %d/%d 次)", self.name, url, str(e), attempt, max_retries)
+
+            if attempt < max_retries:
+                backoff = settings.RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
+                await asyncio.sleep(backoff + random.uniform(0, 1))
+
+        logger.warning("[%s] [Scrapling] 最终失败: %s (%s)", self.name, url, str(last_error))
+        return None
+
+    async def fetch_json(self, url: str, use_scrapling: Optional[bool] = None, **kwargs) -> Optional[dict | list]:
         """
         带重试机制的 JSON API 请求
 
         Args:
             url: API 地址
-            **kwargs: 传递给 httpx 的额外参数
+            use_scrapling: 是否使用Scrapling引擎
+            **kwargs: 传递给 fetch/httpx 的额外参数
 
         Returns:
             解析后的 JSON 数据，失败时返回 None
         """
-        response = await self.fetch(url, **kwargs)
+        response = await self.fetch(url, use_scrapling=use_scrapling, **kwargs)
         if response is None:
             return None
         try:
@@ -186,17 +301,68 @@ class BaseSpider(ABC):
         """
         return BeautifulSoup(html_content, parser)
 
+    @staticmethod
+    def parse_scrapling(html_content: str, adaptive: bool = True):
+        """
+        使用 Scrapling Selector 自适应解析 HTML（比BS4快784倍）
+
+        Args:
+            html_content: HTML 字符串
+            adaptive: 是否开启自适应模式，开启后网站结构变化可自动重定位
+
+        Returns:
+            Scrapling Selector 对象，支持 .css()/.text/.get_all_text() 等方法
+            如果 Scrapling 不可用，回退到 BeautifulSoup
+        """
+        if _SCRAPLING_AVAILABLE and _SCRAPLING_SELECTOR is not None:
+            return _SCRAPLING_SELECTOR(html_content, adaptive=adaptive)
+        return BeautifulSoup(html_content, "lxml")
+
+    @staticmethod
+    def get_text(parsed, separator: str = "\n", strip: bool = True) -> str:
+        """
+        从解析后的 HTML 中提取全部文本
+        兼容 Scrapling Selector 和 BeautifulSoup
+
+        Args:
+            parsed: Selector 或 BeautifulSoup 对象
+            separator: 文本分隔符
+            strip: 是否去除首尾空白
+
+        Returns:
+            提取的纯文本
+        """
+        # 优先 Scrapling Selector 的 get_all_text
+        if _SCRAPLING_AVAILABLE:
+            try:
+                if hasattr(parsed, 'get_all_text') and callable(parsed.get_all_text):
+                    return parsed.get_all_text(separator=separator, strip=strip)
+            except Exception:
+                pass
+        # 回退到 BS4 的 get_text
+        if hasattr(parsed, 'get_text') and callable(parsed.get_text):
+            return parsed.get_text(separator=separator, strip=strip)
+        return str(parsed)
+
     # ==================== Redis 去重 ====================
 
     async def _get_redis(self):
-        """获取 Redis 连接（懒加载）"""
+        """获取 Redis 连接（懒加载），带短超时快速失败"""
         if self._redis is None:
             import redis.asyncio as aioredis
-            self._redis = aioredis.from_url(
-                settings.REDIS_URL,
-                encoding="utf-8",
-                decode_responses=True,
-            )
+            try:
+                self._redis = aioredis.from_url(
+                    settings.REDIS_URL,
+                    encoding="utf-8",
+                    decode_responses=True,
+                    socket_connect_timeout=1,  # 1秒超时
+                    socket_timeout=2,
+                )
+                # 测试连接
+                await self._redis.ping()
+            except Exception as e:
+                logger.warning("[%s] Redis 不可用，跳过去重: %s", self.name, str(e))
+                self._redis = False  # 标记为不可用
         return self._redis
 
     async def is_duplicate(self, source_url: str) -> bool:
@@ -211,6 +377,8 @@ class BaseSpider(ABC):
         """
         try:
             redis_client = await self._get_redis()
+            if redis_client is False:  # Redis 不可用，跳过去重
+                return False
             redis_key = f"spider:dedup:{self.name}"
             is_dup = await redis_client.sismember(redis_key, source_url)
             if is_dup:
@@ -226,8 +394,11 @@ class BaseSpider(ABC):
 
     async def close_redis(self) -> None:
         """关闭 Redis 连接"""
-        if self._redis is not None:
-            await self._redis.close()
+        if self._redis is not None and self._redis is not False:
+            try:
+                await self._redis.close()
+            except Exception:
+                pass
             self._redis = None
 
     # ==================== PostgreSQL 存储 ====================
@@ -306,7 +477,10 @@ class BaseSpider(ABC):
 
     async def save_batch_to_db(self, items: list[OpportunityItem]) -> int:
         """
-        批量保存数据到 PostgreSQL
+        批量保存数据到后端数据库
+
+        优先通过后端 API 保存；若 API 不可用则直写 SQLite 数据库文件。
+        SQLite 数据库路径由 backend 配置决定。
 
         Args:
             items: OpportunityItem 列表
@@ -314,11 +488,74 @@ class BaseSpider(ABC):
         Returns:
             成功保存的条数
         """
-        saved = 0
-        for item in items:
-            if await self.save_to_db(item):
-                saved += 1
-        return saved
+        if not items:
+            return 0
+
+        # === 方式一：通过后端 API 批量保存 ===
+        try:
+            payload_items = []
+            for item in items:
+                payload = {
+                    "title": item.title,
+                    "description": item.description or "",
+                    "source_url": item.source_url,
+                    "source": item.source,
+                    "type": item.type,
+                    "tags": item.tags or [],
+                    "status": "active",
+                }
+                if getattr(item, 'reward', None):
+                    payload["reward"] = item.reward
+                if getattr(item, 'deadline', None):
+                    payload["deadline"] = item.deadline.isoformat() if hasattr(item.deadline, 'isoformat') else str(item.deadline)
+                if getattr(item, 'requirements', None):
+                    payload["requirements"] = item.requirements
+                if getattr(item, 'official_link', None):
+                    payload["official_link"] = item.official_link
+                payload_items.append(payload)
+
+            async with httpx.AsyncClient(timeout=60) as client:
+                url = f"{settings.API_BASE_URL}/opportunities/batch"
+                response = await client.post(url, json={"items": payload_items})
+
+                if response.status_code == 201:
+                    result = response.json()
+                    saved = len(result) if isinstance(result, list) else 0
+                    logger.info("[%s] 批量入库成功: %d 条 (API)", self.name, saved)
+                    return saved
+                else:
+                    logger.warning("[%s] API入库失败(HTTP %s)，回退到直写SQLite", self.name, response.status_code)
+
+        except Exception as e:
+            logger.warning("[%s] API入库异常(%s)，回退到直写SQLite", self.name, str(e))
+
+        # === 方式二：API失败时直写 SQLite 数据库 ===
+        try:
+            import aiosqlite
+            # 从 settings 获取或使用默认路径；如需更改请修改 spider 数据目录
+            import os
+            default_db_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "backend")
+            db_path = getattr(settings, "SQLITE_FALLBACK_PATH", os.path.join(default_db_dir, "ai_dev_hub.db"))
+            saved = 0
+            async with aiosqlite.connect(db_path) as db:
+                for item in items:
+                    try:
+                        await db.execute(
+                            """INSERT INTO opportunities
+                               (title, type, source, source_url, description, tags, status, created_at, updated_at)
+                               VALUES (?, ?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))""",
+                            (item.title, item.type, item.source, item.source_url,
+                             item.description or "", json.dumps(item.tags or []))
+                        )
+                        saved += 1
+                    except Exception as e:
+                        logger.debug("[%s] 单条写入跳过: %s", self.name, e)
+                await db.commit()
+            logger.info("[%s] 直写SQLite成功: %d 条", self.name, saved)
+            return saved
+        except Exception as e:
+            logger.error("[%s] 直写SQLite失败: %s", self.name, str(e))
+            return 0
 
     async def close_db(self) -> None:
         """关闭数据库连接"""

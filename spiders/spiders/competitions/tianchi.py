@@ -91,55 +91,59 @@ class TianchiSpider(BaseSpider):
         Returns:
             OpportunityItem 列表
         """
-        from playwright.async_api import async_playwright
+        from cloakbrowser import launch_async
 
         items = []
-
-        async with async_playwright() as p:
-            # 启动浏览器
-            browser = await p.chromium.launch(headless=True)
+        browser = None
+        try:
+            # 启动 CloakBrowser（Playwright 兼容接口，返回标准 Browser 对象）
+            browser = await launch_async(
+                headless=True,
+                stealth_args=True,
+                humanize=True,
+            )
             context = await browser.new_context(
                 user_agent=self._get_random_ua(),
             )
             page = await context.new_page()
 
-            try:
-                # 访问比赛列表页
-                logger.info("[%s] Playwright 正在加载页面: %s", self.name, TIANCHI_COMPETITIONS_URL)
-                await page.goto(TIANCHI_COMPETITIONS_URL, wait_until="networkidle", timeout=30000)
+            # 访问比赛列表页
+            logger.info("[%s] CloakBrowser 正在加载页面: %s", self.name, TIANCHI_COMPETITIONS_URL)
+            await page.goto(TIANCHI_COMPETITIONS_URL, wait_until="networkidle", timeout=30000)
 
-                # 等待比赛列表加载
-                await page.wait_for_selector(".competition-item, .comp-item, [class*='competition']", timeout=15000)
+            # 等待比赛列表加载
+            await page.wait_for_selector(".competition-item, .comp-item, [class*='competition']", timeout=15000)
 
-                # 获取页面内容
-                content = await page.content()
-                soup = self.parse_html(content)
+            # 获取页面内容
+            content = await page.content()
+            soup = self.parse_html(content)
 
-                # 解析比赛列表
-                items = self._parse_competition_list(soup)
+            # 解析比赛列表
+            items = self._parse_competition_list(soup)
 
-                # 尝试翻页
-                for page_num in range(2, 4):  # 最多爬取3页
-                    try:
-                        # 查找下一页按钮
-                        next_btn = await page.query_selector(".next, .pagination-next, [class*='next']")
-                        if next_btn:
-                            await next_btn.click()
-                            await page.wait_for_timeout(2000)  # 等待加载
-                            content = await page.content()
-                            soup = self.parse_html(content)
-                            page_items = self._parse_competition_list(soup)
-                            items.extend(page_items)
-                            await self._random_delay()
-                        else:
-                            break
-                    except Exception as e:
-                        logger.debug("[%s] 翻页失败: %s", self.name, str(e))
+            # 尝试翻页
+            for page_num in range(2, 4):  # 最多爬取3页
+                try:
+                    # 查找下一页按钮
+                    next_btn = await page.query_selector(".next, .pagination-next, [class*='next']")
+                    if next_btn:
+                        await next_btn.click()
+                        await page.wait_for_timeout(2000)  # 等待加载
+                        content = await page.content()
+                        soup = self.parse_html(content)
+                        page_items = self._parse_competition_list(soup)
+                        items.extend(page_items)
+                        await self._random_delay()
+                    else:
                         break
+                except Exception as e:
+                    logger.debug("[%s] 翻页失败: %s", self.name, str(e))
+                    break
 
-            except Exception as e:
-                logger.error("[%s] Playwright 解析失败: %s", self.name, str(e))
-            finally:
+        except Exception as e:
+            logger.error("[%s] CloakBrowser 解析失败: %s", self.name, str(e))
+        finally:
+            if browser:
                 await browser.close()
 
         return items
